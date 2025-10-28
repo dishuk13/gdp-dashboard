@@ -4,9 +4,11 @@ This folder contains utility scripts for working with Metaculus data.
 
 ## Metaculus Medaled User Predictions Aggregator
 
-**File:** `metaculus_medaled_predictions.py`
+**Files:**
+- `metaculus_medaled_predictions.py` - Python script for command-line usage
+- `metaculus_medaled_predictions.ipynb` - Jupyter notebook with visualizations
 
-This script fetches comments with predictions from a Metaculus question, filters for comments from users who have at least one medal, and provides aggregate prediction statistics from those users.
+This tool fetches comments with predictions from a Metaculus question, filters for comments from users who have at least one medal, and provides aggregate prediction statistics from those users.
 
 ### Features
 
@@ -14,8 +16,27 @@ This script fetches comments with predictions from a Metaculus question, filters
 - Identifies users with medals (gold, silver, or bronze)
 - Extracts predictions from comments made by medaled users
 - Calculates aggregate statistics (mean, median, min, max, standard deviation)
+- **Notebook version includes**: Interactive visualizations, charts, and CSV export
 
-### Usage
+### Quick Start - Jupyter Notebook
+
+**Recommended for interactive analysis and visualizations!**
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/dishuk13/gdp-dashboard/blob/main/scripts/metaculus_medaled_predictions.ipynb)
+
+Click the badge above to open the notebook in Google Colab, or run locally:
+
+```bash
+jupyter notebook scripts/metaculus_medaled_predictions.ipynb
+```
+
+The notebook includes:
+- Step-by-step execution with explanations
+- Interactive visualizations (histograms, box plots, scatter plots)
+- Automatic CSV export of results
+- Summary statistics dashboard
+
+### Usage - Python Script
 
 ```bash
 # Basic usage with question ID
