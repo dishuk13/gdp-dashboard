@@ -58,6 +58,7 @@ class MetaculusAPI:
     def get_comments(self, question_id: int, limit: int = 100) -> List[Dict[str, Any]]:
         """
         Fetch all comments for a question.
+        Tries multiple endpoint approaches to handle API variations.
 
         Args:
             question_id: The question ID
@@ -66,35 +67,82 @@ class MetaculusAPI:
         Returns:
             List of comment dictionaries
         """
-        all_comments = []
-        url = f"{self.BASE_URL}/comments/"
-        params = {
-            'question': question_id,
-            'limit': limit
-        }
+        # Try multiple approaches to fetch comments
+        approaches = [
+            # Approach 1: on_post parameter (most likely to work)
+            ('on_post', f"{self.BASE_URL}/comments/", {'on_post': question_id, 'limit': limit}),
+            # Approach 2: question parameter
+            ('question', f"{self.BASE_URL}/comments/", {'question': question_id, 'limit': limit}),
+            # Approach 3: nested endpoint under posts
+            ('nested_posts', f"{self.BASE_URL}/posts/{question_id}/comments/", {'limit': limit}),
+        ]
 
-        while True:
-            response = self.session.get(url, params=params)
-            response.raise_for_status()
-            data = response.json()
+        last_error = None
 
-            results = data.get('results', [])
-            all_comments.extend(results)
+        for approach_name, url, params in approaches:
+            try:
+                all_comments = []
+                current_params = params.copy()
 
-            # Check if there's a next page
-            next_url = data.get('next')
-            if not next_url:
-                break
+                while True:
+                    response = self.session.get(url, params=current_params)
+                    response.raise_for_status()
+                    data = response.json()
 
-            # Extract cursor from next URL
-            if 'cursor=' in next_url:
-                cursor = next_url.split('cursor=')[1].split('&')[0]
-                params['cursor'] = cursor
-                params.pop('question', None)  # Remove question param after first request
-            else:
-                break
+                    # Handle both list and dict responses
+                    if isinstance(data, list):
+                        all_comments.extend(data)
+                        break  # Lists don't have pagination
+                    elif isinstance(data, dict):
+                        results = data.get('results', [])
+                        all_comments.extend(results)
 
-        return all_comments
+                        # Check if there's a next page
+                        next_url = data.get('next')
+                        if not next_url:
+                            break
+
+                        # Extract cursor from next URL
+                        if 'cursor=' in next_url:
+                            cursor = next_url.split('cursor=')[1].split('&')[0]
+                            current_params['cursor'] = cursor
+                            # Remove original filter param after first request
+                            current_params.pop('question', None)
+                            current_params.pop('on_post', None)
+                        else:
+                            break
+                    else:
+                        break
+
+                # If we got here without an exception, it worked!
+                if all_comments or approach_name == approaches[-1][0]:
+                    # Success! or last attempt
+                    return all_comments
+
+            except requests.exceptions.HTTPError as e:
+                last_error = e
+                if e.response.status_code == 405:
+                    # Method not allowed, try next approach
+                    continue
+                elif e.response.status_code == 404:
+                    # Not found, try next approach
+                    continue
+                else:
+                    # Other HTTP error, might be more serious
+                    raise
+            except Exception as e:
+                last_error = e
+                continue
+
+        # If all approaches failed, raise the last error
+        if last_error:
+            print(f"\n⚠️  Warning: Could not fetch comments using standard approaches.")
+            print(f"   Last error: {last_error}")
+            print(f"   This may mean comments are not accessible via the API,")
+            print(f"   or the API structure has changed.")
+            print(f"   Run 'python scripts/test_metaculus_api.py {question_id}' for diagnostics.")
+
+        return []
 
     def get_user(self, user_id: int) -> Dict[str, Any]:
         """
