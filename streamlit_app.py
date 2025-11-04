@@ -25,35 +25,20 @@ def get_gdp_data():
     DATA_FILENAME = Path(__file__).parent/'data/gdp_data.csv'
     raw_gdp_df = pd.read_csv(DATA_FILENAME)
 
-    MIN_YEAR = 1960
-    MAX_YEAR = 2022
+    # Detect year columns dynamically to avoid dropping newer years in the dataset
+    year_cols = [col for col in raw_gdp_df.columns if str(col).isdigit()]
 
-    # The data above has columns like:
-    # - Country Name
-    # - Country Code
-    # - [Stuff I don't care about]
-    # - GDP for 1960
-    # - GDP for 1961
-    # - GDP for 1962
-    # - ...
-    # - GDP for 2022
-    #
-    # ...but I want this instead:
-    # - Country Name
-    # - Country Code
-    # - Year
-    # - GDP
-    #
-    # So let's pivot all those year-columns into two: Year and GDP
+    # Pivot all those year-columns into two: Year and GDP, keeping country name and code
     gdp_df = raw_gdp_df.melt(
-        ['Country Code'],
-        [str(x) for x in range(MIN_YEAR, MAX_YEAR + 1)],
+        ['Country Name', 'Country Code'],
+        year_cols,
         'Year',
         'GDP',
     )
 
-    # Convert years from string to integers
+    # Convert types
     gdp_df['Year'] = pd.to_numeric(gdp_df['Year'])
+    gdp_df['GDP'] = pd.to_numeric(gdp_df['GDP'], errors='coerce')
 
     return gdp_df
 
@@ -84,15 +69,20 @@ from_year, to_year = st.slider(
     max_value=max_value,
     value=[min_value, max_value])
 
-countries = gdp_df['Country Code'].unique()
+# Use a sorted list for a better UX
+countries = sorted(gdp_df['Country Code'].unique().tolist())
 
-if not len(countries):
-    st.warning("Select at least one country")
+# Removed an incorrect warning that checked the available countries instead of the selection
 
 selected_countries = st.multiselect(
     'Which countries would you like to view?',
     countries,
     ['DEU', 'FRA', 'GBR', 'BRA', 'MEX', 'JPN'])
+
+# Validate selection properly and stop the script if nothing is selected
+if not selected_countries:
+    st.warning('Select at least one country')
+    st.stop()
 
 ''
 ''
@@ -119,11 +109,9 @@ st.line_chart(
 ''
 ''
 
+# No need to pre-slice by the endpoints only; we'll handle missing values robustly per country
 
-first_year = gdp_df[gdp_df['Year'] == from_year]
-last_year = gdp_df[gdp_df['Year'] == to_year]
-
-st.header(f'GDP in {to_year}', divider='gray')
+st.header('Latest GDP within selected range', divider='gray')
 
 ''
 
@@ -133,19 +121,33 @@ for i, country in enumerate(selected_countries):
     col = cols[i % len(cols)]
 
     with col:
-        first_gdp = first_year[first_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
-        last_gdp = last_year[last_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
-
-        if math.isnan(first_gdp):
-            growth = 'n/a'
-            delta_color = 'off'
-        else:
-            growth = f'{last_gdp / first_gdp:,.2f}x'
-            delta_color = 'normal'
-
-        st.metric(
-            label=f'{country} GDP',
-            value=f'{last_gdp:,.0f}B',
-            delta=growth,
-            delta_color=delta_color
+        country_df = (
+            filtered_gdp_df[filtered_gdp_df['Country Code'] == country]
+            .dropna(subset=['GDP'])
+            .sort_values('Year')
         )
+
+        if country_df.empty:
+            st.metric(
+                label=f'{country} GDP',
+                value='n/a',
+                delta='n/a',
+                delta_color='off'
+            )
+        else:
+            first_gdp_val = country_df['GDP'].iloc[0] / 1_000_000_000
+            last_gdp_val = country_df['GDP'].iloc[-1] / 1_000_000_000
+
+            if not math.isfinite(first_gdp_val) or first_gdp_val <= 0 or not math.isfinite(last_gdp_val):
+                growth = 'n/a'
+                delta_color = 'off'
+            else:
+                growth = f'{last_gdp_val / first_gdp_val:,.2f}x'
+                delta_color = 'normal'
+
+            st.metric(
+                label=f'{country} GDP',
+                value=f'{last_gdp_val:,.0f}B' if math.isfinite(last_gdp_val) else 'n/a',
+                delta=growth,
+                delta_color=delta_color
+            )
